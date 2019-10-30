@@ -1,8 +1,10 @@
 var fs = require('fs');
 var http = require('http');
 const axios = require('axios');
+const crypto = require('crypto');
 
-var obj = JSON.parse(fs.readFileSync('traces/Profile-20191028T110901.json', 'utf8'));
+let filename = 'softwareart.json';
+var obj = JSON.parse(fs.readFileSync('traces/' + filename, 'utf8'));
 
 
 var screenshots = [];
@@ -14,10 +16,71 @@ var loading_events = [];
 var scripting_events = [];
 var parsed_scripting_events = [];
 
-for (const object of obj) {
-  if (object.name === "RasterTask") {
-    console.log(object);
+var script_url_set = new Set([]);
+
+
+// Decoding base-64 image
+// Source: http://stackoverflow.com/questions/20267939/nodejs-write-base64-image-file
+function decodeBase64Image(dataString) 
+{
+  var matches = dataString.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  var response = {};
+
+  if (matches == null || matches.length !== 3) 
+  {
+    return false;
   }
+
+  response.type = matches[1];
+  response.data = new Buffer.from(matches[2], 'base64');
+
+  return response;
+}
+
+// save a base64 image to disk
+// from: https://stackoverflow.com/questions/10037563/node-js-base64-image-decoding-and-writing-to-file
+// Save base64 image to disk
+function saveBase64Image(imageBuffer, filePath) {
+  try
+  {
+      // Regular expression for image type:
+      // This regular image extracts the "jpeg" from "image/jpeg"
+      var imageTypeRegularExpression      = /\/(.*?)$/;
+
+      // This variable is actually an array which has 5 values,
+      // The [1] value is the real image extension
+      var imageTypeDetected                = imageBuffer.type.match(imageTypeRegularExpression);
+      
+      // image type svg+xml should have file ending svg
+      if(imageTypeDetected[1] === "svg+xml") {
+        imageTypeDetected[1] = "svg";
+      }
+                                               
+      var userUploadedImagePath            = filePath + '.' + imageTypeDetected[1];
+
+      // Save decoded binary image to disk
+      try
+      {
+      fs.writeFile(userUploadedImagePath, imageBuffer.data,  
+                              function() 
+                              {
+                                console.log('DEBUG - feed:message: Saved to disk image attached by user:', userUploadedImagePath);
+                              });
+      }
+      catch(error)
+      {
+          console.log('ERROR:', error);
+      }
+
+  }
+  catch(error)
+  {
+      console.log('ERROR:', error);
+  }
+}
+
+
+for (const object of obj) {
   
   // log stuff
   // LAYER 1: GUI screenshots
@@ -143,6 +206,7 @@ for (const object of obj) {
       ts: object.ts,
       dur: object.dur,
       url: object.args.data.url,
+      rendered_image: false,
       x: object.args.data.x,
       y: object.args.data.y,
       width: object.args.data.width,
@@ -150,6 +214,14 @@ for (const object of obj) {
       srcWidth: object.args.data.srcWidth,
       srcHeight: object.args.data.srcHeight,
     };
+    // the url sometimes contains the entire image in base64
+    if(new_obj.url != undefined) {
+      let imageBuffer = decodeBase64Image(new_obj.url);
+      if(imageBuffer != false) {
+        saveBase64Image(imageBuffer, "paint_images/" + new_obj.ts)
+        new_obj.rendered_image = true;
+      }
+    }
     painting_events.push(new_obj);
   }
   else if(object.name === "CompositeLayers") {
@@ -360,8 +432,8 @@ let finished_parsing = false;
 
 function handleFinishedCodeGetter() {
   
-  if(finished_parsing
-  && parsed_scripting_events.length == num_parsed_scripting_events) {
+  // if(finished_parsing
+  // && parsed_scripting_events.length == num_parsed_scripting_events) {
     // Write data to files
     fs.writeFile("scores/parsed_scripting_events.json", 
     JSON.stringify(parsed_scripting_events), function(err) {
@@ -373,7 +445,7 @@ function handleFinishedCodeGetter() {
     });
     console.log("Parsed scripting events: " + parsed_scripting_events.length);
 
-  }
+  // }
 }
 
 for(e of scripting_events) {
@@ -395,34 +467,54 @@ for(e of scripting_events) {
           parent: parseInt(n.parent),
           totalChunkTime: totalTime,
         };
+        parsed_scripting_events.push(obj);
         let code = "";
         // grab the code that the trace points to
         // Simple approach: grab the code on the line number listed
-        if(obj.url == undefined) {
-          parsed_scripting_events.push(obj);
-        } else {
-          axios.get(obj.url)
-            .then(response => {
-              //console.log(response);
-              let all_code = response.data;
-              let lines = all_code.split(/\r\n|\r|\n/);
-              //console.log("lines: " + lines);
-              if(obj.lineNumber >= lines.length) {
-                console.log("line number " + obj.lineNumber + " is higher than the available number of lines " + lines.length + " !");
-                console.log("Offending url: " + obj.url);
-                code = all_code;
-              } else {
-                code = lines[obj.lineNumber];
-                code = code.slice(obj.columnNumber, code.length);
-                obj.code = code;
-              }
-              parsed_scripting_events.push(obj);
-              handleFinishedCodeGetter();
-            })
-            .catch(error => {
-              console.log(error);
-              console.log("Could not get the code");
-            });
+        if(obj.url != undefined) {
+          if(script_url_set.has(obj.url) == false) {
+            script_url_set.add(obj.url);
+            const url = obj.url;
+            
+            axios.get(url)
+              .then(response => {
+                //console.log(response);
+                let all_code = response.data;
+                // create hash of the url for the filename
+                let hash = crypto.createHash('sha1');
+                hash.setEncoding('hex');
+                hash.write(url);   // the text that you want to hash
+                // very important! You cannot read from the stream until you have called end()
+                hash.end();
+                let filename = hash.read();
+                fs.writeFile("downloaded_js/" + filename, 
+                all_code, function(err) {
+                    if(err) {
+                        console.log("File writing error");
+                        return console.log(err);
+                    }
+
+                    console.log("url " + url + " was saved!");
+                });
+                
+                // let lines = all_code.split(/\r\n|\r|\n/);
+                // //console.log("lines: " + lines);
+                // if(obj.lineNumber >= lines.length) {
+                //   console.log("line number " + obj.lineNumber + " is higher than the available number of lines " + lines.length + " !");
+                //   console.log("Offending url: " + obj.url);
+                //   code = all_code;
+                // } else {
+                //   code = lines[obj.lineNumber];
+                //   code = code.slice(obj.columnNumber, code.length);
+                //   obj.code = code;
+                // }
+              })
+              .catch(error => {
+                //console.log(error);
+                console.log("Could not get the code");
+              });
+          }
+          
         }
         num_parsed_scripting_events += 1; // use a counter to make sure we know how many there should be
       }
@@ -430,6 +522,7 @@ for(e of scripting_events) {
   }
 }
 finished_parsing = true;
+handleFinishedCodeGetter();
 
 
 let user_events_obj = {events: []};
@@ -439,12 +532,14 @@ let rendering_events_obj = {events: rendering_events};
 let painting_events_obj = {events: painting_events};
 let scripting_events_obj = {events: scripting_events};
 let system_events_obj = {events: system_events};
+let loading_events_obj = {events: loading_events};
 
 console.log("User events: " + user_events.length);
 console.log("Rendering events: " + rendering_events.length);
 console.log("Painting events: " + painting_events.length);
 console.log("System events: " + system_events.length);
 console.log("Scripting events: " + scripting_events.length);
+console.log("Loading events: " + loading_events.length);
 
 // Write data to files
 fs.writeFile("scores/user_events.json", 
@@ -486,4 +581,12 @@ JSON.stringify(system_events_obj), function(err) {
     }
 
     console.log("The file with system events was saved!");
+});
+fs.writeFile("scores/loading_events.json", 
+JSON.stringify(loading_events_obj), function(err) {
+    if(err) {
+        return console.log(err);
+    }
+
+    console.log("The file with loading events was saved!");
 });
