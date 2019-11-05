@@ -11,7 +11,8 @@ public:
     void setup();
     void update();
     void draw();
-    void blob(ofVec3f pos, ofColor color);
+    void blob(ofVec3f pos, ofColor color, float radius);
+    void cluster(ofVec3f pos, ofColor color, float radius);
     
     void keyPressed(int key);
     void keyReleased(int key);
@@ -27,13 +28,19 @@ public:
     
     ofxJSONElement json;
     int systemEventsSize;
+    vector<int> tasks;
     
     // graphics
     vector<ofColor> colors;
     vector<ofVec3f> pos;
+    vector<float> rad;
     
-    ofSpherePrimitive sphere;
-    int rad;
+    vector<ofColor> clusterColors;
+    vector<ofVec3f> clusterPos;
+    vector<float> clusterRad;
+
+    
+//    ofSpherePrimitive sphere;
     
     // easyCam
     bool bHelpText;
