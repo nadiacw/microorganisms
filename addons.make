@@ -1,2 +1,4 @@
+ofxBlur
 ofxJSON
 ofxOsc
+ofxPostProcessing

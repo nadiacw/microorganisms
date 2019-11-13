@@ -2,6 +2,8 @@
 
 #include "ofMain.h"
 #include "ofxJSON.h"
+#include "ofxBlur.h"
+#include "ofxPostProcessing.h"
 
 class ofApp : public ofBaseApp{
     
@@ -9,7 +11,8 @@ public:
     void setup();
     void update();
     void draw();
-    void blob(ofVec3f pos);
+    void blob(ofVec3f pos, ofColor color, float radius);
+    void cluster(ofVec3f pos, ofColor color, float radius);
     
     void keyPressed(int key);
     void keyReleased(int key);
@@ -24,16 +27,28 @@ public:
     void gotMessage(ofMessage msg);
     
     ofxJSONElement json;
-    int eventSize;
+    int systemEventsSize;
+    vector<int> tasks;
     
     // graphics
     vector<ofColor> colors;
     vector<ofVec3f> pos;
+    vector<float> rad;
     
-    ofSpherePrimitive sphere;
+    vector<ofColor> clusterColors;
+    vector<ofVec3f> clusterPos;
+    vector<float> clusterRad;
+
+    
+//    ofSpherePrimitive sphere;
     
     // easyCam
-//    void drawInteractionArea();
     bool bHelpText;
     ofEasyCam cam; // add mouse controls for camera movement
+    
+    // blur
+    ofxBlur blur;
+    
+    // Post processing
+    ofxPostProcessing post;
 };
