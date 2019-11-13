@@ -3,7 +3,7 @@ var http = require('http');
 const axios = require('axios');
 const crypto = require('crypto');
 
-let filename = 'softwareart.json';
+let filename = 'softwareart3(Erik).json';
 var obj = JSON.parse(fs.readFileSync('traces/' + filename, 'utf8'));
 
 
